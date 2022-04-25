@@ -5,9 +5,12 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <errno.h>
 
 #define DEFAULT_PORT ("3000")
-#define MAX_CLIENT (10)
+#define READ_SIZE (100)
+
+int g_exit = 0;
 
 typedef enum ERROR {
     SUCCESS = 1,
@@ -16,10 +19,65 @@ typedef enum ERROR {
     ERROR_READ = -3
 } error_t;
 
+void* send_message(void* p)
+{
+    int client_socket = *(int*)p;
+    char buffer[READ_SIZE];
+
+    do {
+        // if (g_exit == 1) {
+        //     goto end;
+        // }
+        if (fgets(buffer, READ_SIZE, stdin) == NULL) {
+            printf("failed to read from stdin\n");
+            goto end;
+        }
+        if (strcmp(buffer, "exit\n") == 0) {
+            g_exit = 1;
+            shutdown(client_socket, SHUT_RDWR);
+            printf("socket shutdown... %d\n", errno);
+            goto end;
+        }
+        write(client_socket, buffer, READ_SIZE);
+    } while (1);
+
+end:
+    pthread_exit((void*)0);
+
+    return NULL;
+}
+
+void* receive_message(void* p)
+{
+    int client_socket = *(int*)p;
+    char buffer[READ_SIZE];
+
+    do {
+        int receiving_len;
+        if (g_exit == 1) {
+            goto end;
+        }
+        receiving_len = read(client_socket, buffer, sizeof(buffer) - 1);
+        if (receiving_len == -1) {
+            printf("failed to read from server\n");
+            goto end;
+        }
+        printf("message from server : %s\n", buffer);
+    } while (1);
+
+end:
+    pthread_exit((void*)0);
+
+    return NULL;
+    
+}
+
 error_t create_client(const char* server_host, const char* server_port)
 {
     int client_socket;
     struct sockaddr_in server_addr;
+    pthread_t thread_send;
+    pthread_t thread_receive;
     
     client_socket = socket(PF_INET, SOCK_STREAM, 0);
     if (client_socket == -1) {
@@ -35,31 +93,20 @@ error_t create_client(const char* server_host, const char* server_port)
         return ERROR_CONNECT;
     }
 
-    while (1) { /* read */
-        char sending[100];
-        char receiving[100];
-        int receiving_len;
-
-        if (fgets(sending, 100, stdin) == NULL) {
-            break;
-        }
-        if (strcmp(sending, "exit\n") == 0) {
-            goto end;
-        }
-        write(client_socket, sending, 5);
-
-        receiving_len = read(client_socket, receiving, sizeof(receiving) - 1);
-        if (receiving_len == -1) {
-            printf("read error");
-            return ERROR_READ;
-        }
-        printf("message from server : %s\n", receiving);
-        
-    }
+    pthread_create(&thread_send, NULL, send_message, &client_socket);
+    pthread_create(&thread_receive, NULL, receive_message, &client_socket);
+    
+    pthread_join(thread_send, NULL);
+    printf("hih\n");
+    pthread_join(thread_receive, NULL);
+    printf("hih2\n");
 
 end:
-    close(client_socket);
-
+    printf("terminate!\n");
+    if (g_exit == 1) {
+        close(client_socket);
+    }
+    
     return SUCCESS;
 }
 
