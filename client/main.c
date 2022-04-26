@@ -25,9 +25,6 @@ void* send_message(void* p)
     char buffer[READ_SIZE];
 
     do {
-        // if (g_exit == 1) {
-        //     goto end;
-        // }
         if (fgets(buffer, READ_SIZE, stdin) == NULL) {
             printf("failed to read from stdin\n");
             goto end;
@@ -62,7 +59,8 @@ void* receive_message(void* p)
             printf("failed to read from server\n");
             goto end;
         }
-        printf("message from server : %s\n", buffer);
+        buffer[READ_SIZE - 1] = '\0';
+        printf("received message : %s\n", buffer);
     } while (1);
 
 end:
@@ -78,6 +76,8 @@ error_t create_client(const char* server_host, const char* server_port)
     struct sockaddr_in server_addr;
     pthread_t thread_send;
     pthread_t thread_receive;
+
+    signal(SIGPIPE, SIG_IGN); /* ignore EPIPE(broken pipe) signal */
     
     client_socket = socket(PF_INET, SOCK_STREAM, 0);
     if (client_socket == -1) {
@@ -97,12 +97,8 @@ error_t create_client(const char* server_host, const char* server_port)
     pthread_create(&thread_receive, NULL, receive_message, &client_socket);
     
     pthread_join(thread_send, NULL);
-    printf("hih\n");
     pthread_join(thread_receive, NULL);
-    printf("hih2\n");
 
-end:
-    printf("terminate!\n");
     if (g_exit == 1) {
         close(client_socket);
     }

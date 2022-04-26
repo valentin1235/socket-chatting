@@ -108,14 +108,8 @@ void* communicate_thread(void* p)
         {
             int str_len;
             printf("read message..\n");
-            printf("before read errno : %d\n", errno);
-            if (errno == EPIPE) {
-                printf("EPIPE : broken pipe\n");
-                goto end;
-            }
             str_len = read(param->socket_num, pa_tmp_message, MESSAGE_SIZE);
-            printf("after read errno : %d\n", errno);
-            if (errno == ECONNRESET) {
+            if (errno == ECONNRESET || str_len == -1) {
                 printf("ECONNRESET : connection closed\n");
                 goto end;
             }
@@ -137,23 +131,21 @@ void* communicate_thread(void* p)
 
 end:
     printf("thread gracfully closing...\n");
-    printf("1\n");
     pthread_mutex_unlock(&g_mutex);
-    printf("2\n");
-    close(param->socket_num);
-
-    puts("3");
+    shutdown(param->socket_num, SHUT_RDWR);
+    // close(param->socket_num);
     free(pa_tmp_message);
 
     /* remove user */
-    puts("4");
     pthread_mutex_lock(&g_mutex);
     {
         --chatroom->socket_nums_count;
+        if (chatroom->socket_nums_count == 0) {
+            chatroom->messages_count = 0;
+        }
     }
     pthread_mutex_unlock(&g_mutex);
 
-    puts("end");
     pthread_exit((void*)0);
 
     return NULL;
@@ -167,6 +159,8 @@ error_t server_on(void)
     struct sockaddr_in server_addr;
     chatroom_t chatroom;
     pthread_t thread;
+
+    signal(SIGPIPE, SIG_IGN); /* ignore EPIPE(broken pipe) signal */
 
     server_socket = socket(PF_INET, SOCK_STREAM, 0);
     if (server_socket == -1) {
