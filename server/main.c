@@ -30,6 +30,8 @@ typedef struct param {
 } param_t;
 
 pthread_mutex_t g_mutex;
+int g_client_counts = 0;
+int g_client_sockets[MAX_CLIENT];
 
 
 
@@ -123,7 +125,9 @@ void* communicate_thread(void* p)
             size_t i;
             printf("write message to %lu users...\n", chatroom->socket_nums_count);
             for (i = 0; i < chatroom->socket_nums_count; ++i) {
-                write(chatroom->socket_nums[i], pa_tmp_message, strlen(pa_tmp_message) + 1);
+                if (chatroom->socket_nums[i] != param->socket_num) {
+                    write(chatroom->socket_nums[i], pa_tmp_message, strlen(pa_tmp_message) + 1);
+                }
             }
         }
         pthread_mutex_unlock(&g_mutex);
@@ -131,9 +135,9 @@ void* communicate_thread(void* p)
 
 end:
     printf("thread gracfully closing...\n");
+
     pthread_mutex_unlock(&g_mutex);
     shutdown(param->socket_num, SHUT_RDWR);
-    // close(param->socket_num);
     free(pa_tmp_message);
 
     /* remove user */
