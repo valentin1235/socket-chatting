@@ -4,4 +4,4 @@
 - Apple M1
 
 ## 데모영상
-- [link](https://youtu.be/ZYQrtAWYKHA)
+- [LINK](https://youtu.be/ZYQrtAWYKHA)
