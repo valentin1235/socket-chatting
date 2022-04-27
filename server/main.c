@@ -101,17 +101,15 @@ void* communicate_thread(void* p)
         pthread_mutex_lock(&g_mutex);
         {
             size_t i;
-            int str_len;
+            int read_len;
             printf("read message..\n");
-            str_len = read(client_socket, pa_tmp_message, MESSAGE_SIZE); /* read */
-            printf("errno : %d, str_len : %d\n", errno, strlen(pa_tmp_message));
-            if (str_len == -1 || str_len == 0) {
+            read_len = read(client_socket, pa_tmp_message, MESSAGE_SIZE); /* read */
+            if (read_len == -1 || read_len == 0) {
                 printf("ECONNRESET : connection closed\n");
                 break;
-                // goto end;
             }
 
-            printf("write message from %lu...\n", client_socket);
+            printf("write message from %d...\n", client_socket);
             for (i = 0; i < g_client_counts; ++i) { /* write */
                 if (g_client_sockets[i] != client_socket) {
                     write(g_client_sockets[i], pa_tmp_message, strlen(pa_tmp_message) + 1);
@@ -121,7 +119,6 @@ void* communicate_thread(void* p)
         pthread_mutex_unlock(&g_mutex);
     } while (1);
 
-end:
     printf("thread gracfully closing...\n");
 
     pthread_mutex_unlock(&g_mutex);
@@ -154,7 +151,7 @@ error_t server_on(void)
 
     server_socket = socket(PF_INET, SOCK_STREAM, 0);
     if (server_socket == -1) {
-        printf("socket error\n");
+        printf("* socket error\n");
         return ERROR_SOCKET;
     }
 
@@ -165,12 +162,13 @@ error_t server_on(void)
     server_addr.sin_port = htons(atoi(DEFAULT_PORT));
 
     if (bind(server_socket, (struct sockaddr*)&server_addr, sizeof(server_addr)) == -1) {
-        printf("bind error\n");
+        printf("* bind error\n");
         return ERROR_BIND;
     }
+    printf("* server run on 3000\n");
 
     if (listen(server_socket, 5) == -1) {
-        printf("listen error\n");
+        printf("* listen error\n");
         return ERROR_LISTEN;
     }
 
@@ -181,7 +179,7 @@ error_t server_on(void)
         int client_socket;
 
         client_addr_size = sizeof(client_addr);
-        printf("start accepting client...\n");
+        printf("* start accepting client...\n");
         client_socket = accept(server_socket, (struct sockaddr *)&client_addr, &client_addr_size);
         printf("* client accepted : %d\n", client_socket);
 

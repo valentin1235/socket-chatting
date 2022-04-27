@@ -54,15 +54,15 @@ void* receive_message(void* p)
     char buffer[READ_SIZE];
 
     do {
-        int str_len;
+        int read_len;
 
         if (g_exit == 1) {
             printf("* unexpected thread exit\n");
             break;
         }
 
-        str_len = read(client_socket, buffer, sizeof(buffer) - 1);
-        if (str_len == 0 || str_len == -1) {
+        read_len = read(client_socket, buffer, sizeof(buffer) - 1);
+        if (read_len == 0 || read_len == -1) {
             g_exit = 1;
             shutdown(client_socket, SHUT_RDWR);
             printf("* ECONNRESET : connection closed\n");
