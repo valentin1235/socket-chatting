@@ -2,3 +2,6 @@
 - clang 13.1.6
 - C89
 - Apple M1
+
+## 데모영상
+- [link](https://youtu.be/ZYQrtAWYKHA)
