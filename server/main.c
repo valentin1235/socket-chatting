@@ -30,7 +30,7 @@ typedef struct param {
 } param_t;
 
 pthread_mutex_t g_mutex;
-int g_client_counts = 0;
+size_t g_client_counts = 0;
 int g_client_sockets[MAX_CLIENT];
 
 
@@ -87,46 +87,34 @@ static char* build_message_malloc(chatroom_t* chatroom)
 
 void* communicate_thread(void* p)
 {
-    param_t* param = p;
-    chatroom_t* chatroom = param->chatroom;
+    int client_socket = *((int*)p);
     char* pa_tmp_message = malloc(MESSAGE_SIZE);
-
-    if (chatroom->messages_count >= MAX_MESSAGES) {
-        printf("FULL OF MESSAGES\n");
-
-        return NULL;
-    }
 
     /* add user */
     pthread_mutex_lock(&g_mutex);
     {
-        chatroom->socket_nums[chatroom->socket_nums_count++] = param->socket_num;
+        g_client_sockets[g_client_counts++] = client_socket;
     }
     pthread_mutex_unlock(&g_mutex);
     
     do {
-        /* read */
-        pthread_mutex_lock(&g_mutex);
-        {
-            int str_len;
-            printf("read message..\n");
-            str_len = read(param->socket_num, pa_tmp_message, MESSAGE_SIZE);
-            if (errno == ECONNRESET || str_len == -1) {
-                printf("ECONNRESET : connection closed\n");
-                goto end;
-            }
-            ++chatroom->messages_count;
-        }
-        pthread_mutex_unlock(&g_mutex);
-
-        /* write */
         pthread_mutex_lock(&g_mutex);
         {
             size_t i;
-            printf("write message to %lu users...\n", chatroom->socket_nums_count);
-            for (i = 0; i < chatroom->socket_nums_count; ++i) {
-                if (chatroom->socket_nums[i] != param->socket_num) {
-                    write(chatroom->socket_nums[i], pa_tmp_message, strlen(pa_tmp_message) + 1);
+            int str_len;
+            printf("read message..\n");
+            str_len = read(client_socket, pa_tmp_message, MESSAGE_SIZE); /* read */
+            printf("errno : %d, str_len : %d\n", errno, strlen(pa_tmp_message));
+            if (str_len == -1 || str_len == 0) {
+                printf("ECONNRESET : connection closed\n");
+                break;
+                // goto end;
+            }
+
+            printf("write message from %lu...\n", client_socket);
+            for (i = 0; i < g_client_counts; ++i) { /* write */
+                if (g_client_sockets[i] != client_socket) {
+                    write(g_client_sockets[i], pa_tmp_message, strlen(pa_tmp_message) + 1);
                 }
             }
         }
@@ -137,16 +125,14 @@ end:
     printf("thread gracfully closing...\n");
 
     pthread_mutex_unlock(&g_mutex);
-    shutdown(param->socket_num, SHUT_RDWR);
+    close(client_socket);
+    shutdown(client_socket, SHUT_RDWR);
     free(pa_tmp_message);
 
     /* remove user */
     pthread_mutex_lock(&g_mutex);
     {
-        --chatroom->socket_nums_count;
-        if (chatroom->socket_nums_count == 0) {
-            chatroom->messages_count = 0;
-        }
+        --g_client_counts;
     }
     pthread_mutex_unlock(&g_mutex);
 
@@ -195,17 +181,12 @@ error_t server_on(void)
         int client_socket;
 
         client_addr_size = sizeof(client_addr);
-        printf("* start accepting client...\n");
+        printf("start accepting client...\n");
         client_socket = accept(server_socket, (struct sockaddr *)&client_addr, &client_addr_size);
+        printf("* client accepted : %d\n", client_socket);
 
-        {
-            param_t param;
-            param.chatroom = &chatroom;
-            param.socket_num = client_socket;
-
-            printf("* create new thread...\n");
-            pthread_create(&thread, NULL, communicate_thread, &param);
-        }
+        pthread_create(&thread, NULL, communicate_thread, &client_socket);
+        printf("* new thread for (%d) created\n", client_socket);
     } while (1);
 
     printf("* waiting for the threads completed...\n");

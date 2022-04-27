@@ -24,21 +24,25 @@ void* send_message(void* p)
     int client_socket = *(int*)p;
     char buffer[READ_SIZE];
 
-    do {
+    do {        
         if (fgets(buffer, READ_SIZE, stdin) == NULL) {
-            printf("failed to read from stdin\n");
-            goto end;
+            printf("* failed to read from stdin\n");
+            break;
         }
+
         if (strcmp(buffer, "exit\n") == 0) {
             g_exit = 1;
             shutdown(client_socket, SHUT_RDWR);
-            printf("socket shutdown... %d\n", errno);
-            goto end;
+            printf("* socket shutdown...\n");
+            break;
+        } else if (g_exit == 1) {
+            printf("* unexpected thread exit\n");
+            break;
         }
+
         write(client_socket, buffer, READ_SIZE);
     } while (1);
 
-end:
     pthread_exit((void*)0);
 
     return NULL;
@@ -50,20 +54,25 @@ void* receive_message(void* p)
     char buffer[READ_SIZE];
 
     do {
-        int receiving_len;
+        int str_len;
+
         if (g_exit == 1) {
-            goto end;
+            printf("* unexpected thread exit\n");
+            break;
         }
-        receiving_len = read(client_socket, buffer, sizeof(buffer) - 1);
-        if (receiving_len == -1) {
-            printf("failed to read from server\n");
-            goto end;
+
+        str_len = read(client_socket, buffer, sizeof(buffer) - 1);
+        if (str_len == 0 || str_len == -1) {
+            g_exit = 1;
+            shutdown(client_socket, SHUT_RDWR);
+            printf("* ECONNRESET : connection closed\n");
+            break;
         }
+
         buffer[READ_SIZE - 1] = '\0';
-        printf("received message : %s\n", buffer);
+        printf("* received message : %s\n", buffer);
     } while (1);
 
-end:
     pthread_exit((void*)0);
 
     return NULL;
@@ -81,7 +90,7 @@ error_t create_client(const char* server_host, const char* server_port)
     
     client_socket = socket(PF_INET, SOCK_STREAM, 0);
     if (client_socket == -1) {
-        printf("socket error\n");
+        printf("* socket error\n");
         return ERROR_SOCKET;
     }
     server_addr.sin_family = AF_INET;
@@ -89,7 +98,7 @@ error_t create_client(const char* server_host, const char* server_port)
     server_addr.sin_port = htons(atoi(server_port));
 
     if (connect(client_socket, (struct sockaddr*)&server_addr, sizeof(server_addr)) == -1) {
-        printf("connect error\n");
+        printf("* connect error\n");
         return ERROR_CONNECT;
     }
 
@@ -99,7 +108,7 @@ error_t create_client(const char* server_host, const char* server_port)
     pthread_join(thread_send, NULL);
     pthread_join(thread_receive, NULL);
 
-    if (g_exit == 1) {
+    if (g_exit != 1) {
         close(client_socket);
     }
     
