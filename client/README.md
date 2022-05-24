@@ -2,4 +2,4 @@
 - `clang -std=c89 -W -Wall -pedantic-errors *.c`
 
 ## 실행
-- `./a.out [호스트] [포트]`
+- `./a.out [호스트] [서버포트]`
