@@ -3,6 +3,22 @@
 - C89
 - Apple M1
 
+## 서비스
+- `/client` 채팅 클라이언트
+- `/server` 채팅 서버
+
+## 실행하기
+### 채팅 서버
+1. 채팅 서버 폴더로 이동한다 `cd ./server`
+2. 컴파일 한다 `clang -std=c89 -W -Wall -pedantic-errors *.c`
+3. 실행한다 `./a.out`
+### 채팅 클라이언트
+1. 클라이언트 폴더로 이동한다 `cd ./client`
+2. 컴파일 한다 `clang -std=c89 -W -Wall -pedantic-errors *.c`
+3. 실행한다 `./a.out 127.0.0.1 3000`
+4. 터미널을 하나 더 열고 채팅 클라이언트를 하나 더 실행한다 `./a.out 127.0.0.1 3000`
+5. 채팅 클라이언트 끼리 메세지를 주고받을 수 있다
+
 ## 데모영상
 - [LINK](https://youtu.be/ZYQrtAWYKHA)
 
