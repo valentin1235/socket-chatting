@@ -6,34 +6,19 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <errno.h>
+#include "utils.h"
 
 #define DEFAULT_PORT ("3000")
 #define MAX_CLIENT (10)
 #define MAX_MESSAGES (50)
 #define MESSAGE_SIZE (200)
 
-typedef struct message_form {
-    char content[MESSAGE_SIZE];
-    char created_at[MESSAGE_SIZE];
-} message_form_t;
-
-typedef struct chatroom {
-    message_form_t messages[MAX_MESSAGES];
-    size_t messages_count;
-    int socket_nums[MAX_CLIENT];
-    size_t socket_nums_count;
-} chatroom_t;
-
-typedef struct param {
-    chatroom_t* chatroom;
-    int socket_num;
-} param_t;
+static pthread_t s_thread_communicate;
 
 pthread_mutex_t g_mutex;
-size_t g_client_counts = 0;
-int g_client_sockets[MAX_CLIENT];
-
-
+size_t s_client_counts = 0;
+int s_client_sockets[MAX_CLIENT];
+int s_server_socket;
 
 typedef enum ERROR {
     SUCCESS = 1,
@@ -43,46 +28,23 @@ typedef enum ERROR {
     ERROR_MESSAGE_FULL = -4
 } error_t;
 
-void init_chatroom(chatroom_t* chatroom) {
-    size_t i;
-    for (i = 0; i < MAX_CLIENT; ++i) {
-        chatroom->socket_nums[i] = -1;
-    }
-    chatroom->socket_nums_count = 0;
 
-    chatroom->messages_count = 0;
-}
-
-
-#if (0)
-/* TODO : use this func */
-static char* build_message_malloc(chatroom_t* chatroom)
+static void SIGINT_handler(int sig)
 {
     size_t i;
-    char* buffer = malloc(MESSAGE_SIZE);
-    size_t buffer_size;
-    size_t max_size;
 
-    max_size = MESSAGE_SIZE;
+    pthread_kill(s_thread_communicate, sig);
 
-    buffer[0] = '\0';
-    strcat(buffer, chatroom->messages[0].content);
-    buffer_size = strlen(chatroom->messages[0].content);
-
-    for (i = 0; i < chatroom->messages_count; ++i) {
-        buffer_size += MESSAGE_SIZE;
-
-        if (buffer_size > max_size) {
-            max_size += MESSAGE_SIZE;
-            buffer = realloc(buffer, buffer_size);
-        }
-
-        strcat(buffer, chatroom->messages[i].content);
+    for (i = 0; i < s_client_counts; ++i) {
+        close(s_client_sockets[i]);
     }
 
-    return buffer;
+    close(s_server_socket);
+
+    printf("* sig int %d\n", sig);
+
+    exit(1);
 }
-#endif
 
 
 void* communicate_thread(void* p)
@@ -93,7 +55,7 @@ void* communicate_thread(void* p)
     /* add user */
     pthread_mutex_lock(&g_mutex);
     {
-        g_client_sockets[g_client_counts++] = client_socket;
+        s_client_sockets[s_client_counts++] = client_socket;
     }
     pthread_mutex_unlock(&g_mutex);
     
@@ -110,14 +72,14 @@ void* communicate_thread(void* p)
             }
 
             printf("write message from %d...\n", client_socket);
-            for (i = 0; i < g_client_counts; ++i) { /* write */
-                if (g_client_sockets[i] != client_socket) {
-                    write(g_client_sockets[i], pa_tmp_message, strlen(pa_tmp_message) + 1);
+            for (i = 0; i < s_client_counts; ++i) { /* write */
+                if (s_client_sockets[i] != client_socket) {
+                    write(s_client_sockets[i], pa_tmp_message, strlen(pa_tmp_message) + 1);
                 }
             }
         }
         pthread_mutex_unlock(&g_mutex);
-    } while (1);
+    } while (TRUE);
 
     printf("thread gracfully closing...\n");
 
@@ -129,7 +91,7 @@ void* communicate_thread(void* p)
     /* remove user */
     pthread_mutex_lock(&g_mutex);
     {
-        --g_client_counts;
+        --s_client_counts;
     }
     pthread_mutex_unlock(&g_mutex);
 
@@ -141,16 +103,11 @@ void* communicate_thread(void* p)
 
 error_t server_on(void)
 {
-    int server_socket;
-
+    
     struct sockaddr_in server_addr;
-    chatroom_t chatroom;
-    pthread_t thread;
 
-    signal(SIGPIPE, SIG_IGN); /* ignore EPIPE(broken pipe) signal */
-
-    server_socket = socket(PF_INET, SOCK_STREAM, 0);
-    if (server_socket == -1) {
+    s_server_socket = socket(PF_INET, SOCK_STREAM, 0);
+    if (s_server_socket == -1) {
         printf("* socket error\n");
         return ERROR_SOCKET;
     }
@@ -161,18 +118,17 @@ error_t server_on(void)
     server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
     server_addr.sin_port = htons(atoi(DEFAULT_PORT));
 
-    if (bind(server_socket, (struct sockaddr*)&server_addr, sizeof(server_addr)) == -1) {
+    if (bind(s_server_socket, (struct sockaddr*)&server_addr, sizeof(server_addr)) == -1) {
         printf("* bind error\n");
         return ERROR_BIND;
     }
     printf("* server run on 3000\n");
 
-    if (listen(server_socket, 5) == -1) {
+    if (listen(s_server_socket, 5) == -1) {
         printf("* listen error\n");
         return ERROR_LISTEN;
     }
 
-    init_chatroom(&chatroom);
     do {
         struct sockaddr_in client_addr;
         socklen_t client_addr_size;
@@ -180,22 +136,25 @@ error_t server_on(void)
 
         client_addr_size = sizeof(client_addr);
         printf("* start accepting client...\n");
-        client_socket = accept(server_socket, (struct sockaddr *)&client_addr, &client_addr_size);
+        client_socket = accept(s_server_socket, (struct sockaddr *)&client_addr, &client_addr_size);
         printf("* client accepted : %d\n", client_socket);
 
-        pthread_create(&thread, NULL, communicate_thread, &client_socket);
+        pthread_create(&s_thread_communicate, NULL, communicate_thread, &client_socket);
         printf("* new thread for (%d) created\n", client_socket);
-    } while (1);
+    } while (TRUE);
 
     printf("* waiting for the threads completed...\n");
-    pthread_join(thread, NULL);
+    pthread_join(s_thread_communicate, NULL);
 
-    close(server_socket);
+    close(s_server_socket);
 
     return SUCCESS;
 }
 
 int main(void)
 {
+    signal(SIGPIPE, SIG_IGN); /* ignore EPIPE(broken pipe) signal */
+    signal(SIGINT, SIGINT_handler);
+
     server_on();
 }
