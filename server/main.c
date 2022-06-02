@@ -15,10 +15,10 @@
 
 static pthread_t s_thread_communicate;
 
-pthread_mutex_t g_mutex;
-size_t s_client_counts = 0;
-int s_client_sockets[MAX_CLIENT];
-int s_server_socket;
+static pthread_mutex_t s_mutex;
+static size_t s_client_counts = 0;
+static int s_client_sockets[MAX_CLIENT];
+static int s_server_socket;
 
 typedef enum ERROR {
     SUCCESS = 1,
@@ -53,14 +53,14 @@ void* communicate_thread(void* p)
     char* pa_tmp_message = malloc(MESSAGE_SIZE);
 
     /* add user */
-    pthread_mutex_lock(&g_mutex);
+    pthread_mutex_lock(&s_mutex);
     {
         s_client_sockets[s_client_counts++] = client_socket;
     }
-    pthread_mutex_unlock(&g_mutex);
+    pthread_mutex_unlock(&s_mutex);
     
     do {
-        pthread_mutex_lock(&g_mutex);
+        pthread_mutex_lock(&s_mutex);
         {
             size_t i;
             int read_len;
@@ -78,22 +78,22 @@ void* communicate_thread(void* p)
                 }
             }
         }
-        pthread_mutex_unlock(&g_mutex);
+        pthread_mutex_unlock(&s_mutex);
     } while (TRUE);
 
     printf("thread gracfully closing...\n");
 
-    pthread_mutex_unlock(&g_mutex);
+    pthread_mutex_unlock(&s_mutex);
     close(client_socket);
     shutdown(client_socket, SHUT_RDWR);
     free(pa_tmp_message);
 
     /* remove user */
-    pthread_mutex_lock(&g_mutex);
+    pthread_mutex_lock(&s_mutex);
     {
         --s_client_counts;
     }
-    pthread_mutex_unlock(&g_mutex);
+    pthread_mutex_unlock(&s_mutex);
 
     pthread_exit((void*)0);
 
